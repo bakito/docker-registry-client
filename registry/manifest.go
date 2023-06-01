@@ -2,12 +2,13 @@ package registry
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/manifest/schema1"
 	"github.com/docker/distribution/manifest/schema2"
+	"github.com/heroku/docker-registry-client/registry/oci"
 	digest "github.com/opencontainers/go-digest"
 )
 
@@ -27,7 +28,7 @@ func (registry *Registry) Manifest(repository, reference string) (*schema1.Signe
 	}
 
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -57,12 +58,41 @@ func (registry *Registry) ManifestV2(repository, reference string) (*schema2.Des
 	}
 
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 
 	deserialized := &schema2.DeserializedManifest{}
+	err = deserialized.UnmarshalJSON(body)
+	if err != nil {
+		return nil, err
+	}
+	return deserialized, nil
+}
+
+func (registry *Registry) ManifestOCI(repository, reference string) (*oci.DeserializedManifest, error) {
+	url := registry.url("/v2/%s/manifests/%s", repository, reference)
+	registry.Logf("registry.manifest.get url=%s repository=%s reference=%s", url, repository, reference)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Accept", oci.MediaTypeManifest)
+	resp, err := registry.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	deserialized := &oci.DeserializedManifest{}
 	err = deserialized.UnmarshalJSON(body)
 	if err != nil {
 		return nil, err
